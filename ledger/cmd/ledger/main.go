@@ -1,59 +1,20 @@
 package main
 
 import (
-	"errors"
+	"bufio"
 	"fmt"
-	"sync"
+	"os"
 	"time"
+
+	"github.com/lyagu5h/finScope/ledger/internal/ledger"
 )
 
-type Transaction struct {
-	ID int
-	Amount float64
-	Category string
-	Description string
-	Date time.Time
-}
 
-type Store struct {
-	mu sync.RWMutex
-	txs []Transaction
-}
-
-func NewStore() *Store {
-	return &Store{
-		txs: []Transaction{},
-	}
-}
-
-func (s *Store) AddTransaction(tx Transaction) error {
-	
-	if tx.Amount == 0 || tx.Amount < 0 {
-		return errors.New("amount of transaction cannot be == 0 or < 0")
-	}
-
-	if tx.Category == "" {
-		return errors.New("category cannot be empty")
-	}
-
-	s.mu.Lock()
-	s.txs = append(s.txs, tx)
-	s.mu.Unlock()
-	return nil
-}
-
-func (s *Store) ListTransactions() []Transaction {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	tmp := make([]Transaction, len(s.txs))
-	copy(tmp, s.txs)
-	return tmp
-} 
 
 func main() {
-	store := NewStore()
+	store := ledger.NewStore()
 
-	transactions := []Transaction{
+	transactions := []ledger.Transaction{
 		{
 			Amount: 1499.90, 
 			Category: "Food", 
@@ -68,11 +29,24 @@ func main() {
 		},
 	}
 
+	f, err := os.Open("budgets.json")
+
+	if err != nil {
+		fmt.Println("Error: ", err)
+		return
+	}
+
+	defer f.Close()
+
+	reader := bufio.NewReader(f)
+	if err := store.LoadBudgets(reader); err != nil {
+		fmt.Println("Error: cannot load budgets.json: ", err)
+	}
+
 	for _, t := range transactions {
 		err := store.AddTransaction(t)
 		if err != nil {
 			fmt.Println(err)
-			return
 		}
 	}
 
