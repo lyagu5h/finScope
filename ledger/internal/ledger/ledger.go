@@ -23,6 +23,10 @@ type Transaction struct {
 	Date        time.Time
 }
 
+type Validatable interface {
+	Validate() error
+}
+
 type Store struct {
 	mu  sync.RWMutex
 	txs []Transaction
@@ -70,12 +74,10 @@ func (s *Store) LoadBudgets(r io.Reader) error {
 
 func (s *Store) AddTransaction(tx Transaction) error {
 
-	if tx.Amount == 0 || tx.Amount < 0 {
-		return errors.New("amount of transaction cannot be = 0 or < 0")
-	}
+	err := tx.Validate()
 
-	if tx.Category == "" {
-		return errors.New("category cannot be empty")
+	if err != nil {
+		return fmt.Errorf("AddTransaction: %s", err)
 	}
 
 	s.mu.Lock()
@@ -107,4 +109,21 @@ func (s *Store) ListTransactions() []Transaction {
 	tmp := make([]Transaction, len(s.txs))
 	copy(tmp, s.txs)
 	return tmp
+}
+
+func (tx Transaction) Validate() error {
+	
+	if tx.Amount == 0 || tx.Amount < 0 {
+		return errors.New("amount of transaction cannot be = 0 or < 0")
+	}
+
+	if tx.Category == "" {
+		return errors.New("category cannot be empty")
+	}
+
+	if tx.Date.IsZero() {
+		return errors.New("date must be set")
+	}
+
+	return nil
 }
