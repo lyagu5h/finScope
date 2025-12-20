@@ -1,30 +1,25 @@
 package main
 
 import (
-	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
+	"os"
+
+	"github.com/lyagu5h/finScope/gateway/internal/api"
+	"github.com/lyagu5h/finScope/ledger/pkg/ledger"
 )
 
 func main() {
 	mux := http.NewServeMux()
+	handlerLog := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
+	logger := slog.New(handlerLog)
+	store := ledger.NewStore(logger)
+	handler := api.NewHandler(store)
 
-	// GET /ping
-	// Output: pong
-	mux.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		w.WriteHeader(http.StatusOK)
-		_, err := w.Write([]byte("pong"))
-
-		if err != nil {
-			fmt.Println("Fatal error on writing header")
-		}
-	})
-
-	if err := http.ListenAndServe(":9091", mux); err != nil {
+	handler.RegisterRoutes(mux)
+	logger.Info("API Gateway starting on port :8080")
+	if err := http.ListenAndServe(":8080", mux); err != nil {
 		log.Fatal(err)
 	}
 }
