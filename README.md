@@ -1,3 +1,5 @@
+# !!! WORK IN PROGRESS !!! WORK IN PROGRESS !!! WORK IN PROGRESS !!! WORK IN PROGRESS !!! WORK IN PROGRESS !!! WORK IN PROGRESS !!!
+
 ## Запуск
 
 1. Применить миграции:
@@ -8,3 +10,6 @@
 
 Для отката последней миграции:
 goose -dir ./ledger/migrations postgres "$DATABASE_URL" down
+
+
+# !!! WORK IN PROGRESS !!! WORK IN PROGRESS !!! WORK IN PROGRESS !!! WORK IN PROGRESS !!! WORK IN PROGRESS !!! WORK IN PROGRESS !!!
