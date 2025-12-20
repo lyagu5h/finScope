@@ -6,7 +6,7 @@
    goose -dir ./ledger/migrations postgres "$DATABASE_URL" up
 
 2. Запустить приложение:
-   go run ./gateway/cmd/gateway
+   go run ./ledger/cmd/ledger
 
 Для отката последней миграции:
 goose -dir ./ledger/migrations postgres "$DATABASE_URL" down
