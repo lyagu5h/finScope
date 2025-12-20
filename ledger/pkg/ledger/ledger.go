@@ -1,18 +1,19 @@
 package ledger
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"time"
 
+	"github.com/lyagu5h/finScope/ledger/pkg/cache"
 	"github.com/lyagu5h/finScope/ledger/pkg/db"
 )
 
-//errors
+// errors
 var ErrBudgetExceeded = errors.New("budget exceeded")
 var ErrBudgetCategoryEmpty = errors.New("budget category cannot be empty")
 var ErrBudgetLimitZero = errors.New("budget limit should be > 0")
@@ -20,14 +21,16 @@ var ErrTransactionAmountZero = errors.New("transaction amount should be > 0")
 var ErrTransactionCategoryEmpty = errors.New("transaction category cannot be empty")
 var ErrTransactionDateEmpty = errors.New("transaction date must be set")
 
+type ReportSummary map[string]float64
+
 type Validatable interface {
 	Validate() error
 }
 
 type Budget struct {
-	Category string `json:"category"`
-	Limit float64 `json:"limit"`
-	Period string `json:"period,omitempty"`
+	Category string  `json:"category"`
+	Limit    float64 `json:"limit"`
+	Period   string  `json:"period,omitempty"`
 }
 
 func (b Budget) Validate() error {
@@ -50,7 +53,7 @@ type Transaction struct {
 }
 
 func (tx Transaction) Validate() error {
-	
+
 	if tx.Amount == 0 || tx.Amount < 0 {
 		return ErrTransactionAmountZero
 	}
@@ -66,9 +69,8 @@ func (tx Transaction) Validate() error {
 	return nil
 }
 
-
 type Store struct {
-	// db  *sql.DB	
+	// db  *sql.DB
 	logger *slog.Logger
 }
 
@@ -78,7 +80,7 @@ func NewStore(log *slog.Logger) *Store {
 	}
 }
 
-func (s *Store) SetBudget(b Budget) error {
+func (s *Store) SetBudget(ctx context.Context, b Budget) error {
 
 	err := b.Validate()
 	if err != nil {
@@ -93,11 +95,32 @@ func (s *Store) SetBudget(b Budget) error {
 	`
 
 	_, err = db.DB.Exec(q, b.Category, b.Limit)
-	
-	return err
+	if err != nil {
+		return err
+	}
+
+	if cache.Client != nil {
+		_ = cache.Client.Del(ctx, "budgets:all").Err()
+	}
+
+	return nil
 }
 
-func (s *Store) ListBudgets() ([]Budget, error) {
+func (s *Store) ListBudgets(ctx context.Context) ([]Budget, error) {
+	const cacheKey = "budgets:all"
+
+	if cache.Client != nil {
+		val, err := cache.Client.Get(ctx, cacheKey).Result()
+		if err == nil {
+			var cached []Budget
+			if err := json.Unmarshal([]byte(val), &cached); err == nil {
+				s.logger.Info("budgets cache hit")
+				return cached, nil
+			}
+		}
+		s.logger.Info("budgets cache miss")
+	}
+
 	const q = `
 		SELECT caZtegory, limit_amount
 		FROM budgets
@@ -123,23 +146,23 @@ func (s *Store) ListBudgets() ([]Budget, error) {
 	return res, rows.Err()
 }
 
-func (s *Store) LoadBudgets(r io.Reader) error {
-	var budgets []Budget
-	dec := json.NewDecoder(r)
+// func (s *Store) LoadBudgets(r io.Reader) error {
+// 	var budgets []Budget
+// 	dec := json.NewDecoder(r)
 
-	if err := dec.Decode(&budgets); err != nil {
-		return err
-	}
+// 	if err := dec.Decode(&budgets); err != nil {
+// 		return err
+// 	}
 
-	for i, b := range budgets {
-		if err := s.SetBudget(b); err != nil {
-			return fmt.Errorf("LoadBudget: %s at %d, %v ", err, i, b)
-		}
-	}
+// 	for i, b := range budgets {
+// 		if err := s.SetBudget(b); err != nil {
+// 			return fmt.Errorf("LoadBudget: %s at %d, %v ", err, i, b)
+// 		}
+// 	}
 
-	return nil
+// 	return nil
 
-}
+// }
 
 func (s *Store) AddTransaction(tx Transaction) error {
 
@@ -184,7 +207,7 @@ func (s *Store) AddTransaction(tx Transaction) error {
 }
 
 func (s *Store) ListTransactions() ([]Transaction, error) {
-const q = `
+	const q = `
 		SELECT id, amount, category, description, date
 		FROM expenses
 		ORDER BY date DESC, id DESC
@@ -214,7 +237,58 @@ const q = `
 	return res, rows.Err()
 }
 
-func CheckValid (v Validatable) error {
+func (s *Store) GetReportSummary(ctx context.Context, from, to time.Time) (ReportSummary, error) {
+	key := fmt.Sprintf(
+		"report:summary:%s:%s",
+		from.Format("2006-01-02"),
+		to.Format("2006-01-02"),
+	)
+
+	if cache.Client != nil {
+		if val, err := cache.Client.Get(ctx, key).Result(); err == nil {
+			s.logger.Info("report cache hit", slog.String("key", key))
+			var cached ReportSummary
+			if err := json.Unmarshal([]byte(val), &cached); err == nil {
+				return cached, nil
+			}
+		}
+		s.logger.Info("report cache miss", slog.String("key", key))
+	}
+
+	const q = `
+		SELECT category, SUM(amount)
+		FROM expenses
+		WHERE date >= $1 AND date <= $2
+		GROUP BY category
+	`
+
+	rows, err := db.DB.Query(q, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(ReportSummary)
+
+	for rows.Next() {
+		var category string
+		var sum float64
+		if err := rows.Scan(&category, &sum); err != nil {
+			return nil, err
+		}
+		result[category] = sum
+	}
+
+	if cache.Client != nil {
+		if data, err := json.Marshal(result); err == nil {
+			_ = cache.Client.Set(ctx, key, data, 30*time.Second).Err()
+		}
+	}
+
+	return result, nil
+}
+
+func CheckValid(v Validatable) error {
 	err := v.Validate()
 
 	return err

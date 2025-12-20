@@ -15,7 +15,7 @@ type Handler struct {
 
 func NewHandler(store *ledger.Store) *Handler {
 	return &Handler{
-		Store: store, 
+		Store: store,
 	}
 }
 
@@ -35,7 +35,6 @@ func (h *Handler) transactionsHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 	}
 }
-
 
 func (h *Handler) budgetsHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
@@ -94,6 +93,8 @@ func (h *Handler) listTransactions(w http.ResponseWriter, _ *http.Request) {
 func (h *Handler) setBudget(w http.ResponseWriter, r *http.Request) {
 	var req CreateBudgetRequest
 
+	ctx := r.Context()
+
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -106,7 +107,7 @@ func (h *Handler) setBudget(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.Store.SetBudget(b); err != nil {
+	if err := h.Store.SetBudget(ctx, b); err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -114,8 +115,9 @@ func (h *Handler) setBudget(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, toBudgetDTO(b))
 }
 
-func (h *Handler) listBudgets(w http.ResponseWriter, _ *http.Request) {
-	budgets, err := h.Store.ListBudgets()
+func (h *Handler) listBudgets(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	budgets, err := h.Store.ListBudgets(ctx)
 
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")

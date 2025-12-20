@@ -12,6 +12,7 @@ import (
 )
 
 func main() {
+	ctx := context.Background()
 	handlerLog := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
 	log := slog.New(handlerLog)
 	store := ledger.NewStore(log)
@@ -19,8 +20,8 @@ func main() {
 	db.InitDB()
 	cache.InitRedis()
 
-	_ = store.SetBudget(ledger.Budget{Category: "еда", Limit: 5000})
-	_ = store.SetBudget(ledger.Budget{Category: "транспорт", Limit: 1500})
+	_ = store.SetBudget(ctx, ledger.Budget{Category: "еда", Limit: 5000})
+	_ = store.SetBudget(ctx, ledger.Budget{Category: "транспорт", Limit: 1500})
 
 	tx := ledger.Transaction{
 		Amount:      1200,
@@ -57,7 +58,7 @@ func main() {
 		)
 	}
 
-	bs, _ := store.ListBudgets()
+	bs, _ := store.ListBudgets(ctx)
 	for _, b := range bs {
 		log.Info("budget",
 			slog.String("category", b.Category),
@@ -66,7 +67,7 @@ func main() {
 	}
 
 	from := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
-	to   := time.Date(2025, 12, 31, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2025, 12, 31, 0, 0, 0, 0, time.UTC)
 
 	report, err := store.GetReportSummary(context.Background(), from, to)
 	if err != nil {
