@@ -3,11 +3,8 @@
 1. Применить миграции:
    goose -dir ./ledger/migrations postgres "$DATABASE_URL" up
 
-2. Запустить приложение (Ledger инициализируется при старте):
+2. Запустить приложение:
    go run ./gateway/cmd/gateway
-
-Ledger при старте подключается к PostgreSQL и Redis,
-после чего Gateway начинает принимать HTTP-запросы.
 
 Для отката последней миграции:
 goose -dir ./ledger/migrations postgres "$DATABASE_URL" down
