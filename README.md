@@ -11,10 +11,3 @@ Ledger при старте подключается к PostgreSQL и Redis,
 
 Для отката последней миграции:
 goose -dir ./ledger/migrations postgres "$DATABASE_URL" down
-
-Пример проверки кеша отчёта:
-
-curl "http://localhost:8080/api/reports/summary?from=2025-01-01&to=2025-12-31"
-curl "http://localhost:8080/api/reports/summary?from=2025-01-01&to=2025-12-31"
-
-Повторный запрос будет обслужен из Redis.
