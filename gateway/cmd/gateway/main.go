@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"log/slog"
 	"net/http"
@@ -14,12 +15,19 @@ func main() {
 	mux := http.NewServeMux()
 	handlerLog := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
 	logger := slog.New(handlerLog)
-	store := ledger.NewStore(logger)
-	handler := api.NewHandler(store)
+	ledgerSvc, closeFn, err := ledger.NewLedgerService(context.Background(), logger)
+
+	if err != nil {
+		logger.Error("failed to fabric ledger service", slog.String("error", err.Error()))
+	}
+	defer closeFn()
+	handler := api.NewHandler(ledgerSvc, logger)
+
+	port := ":8080"
 
 	handler.RegisterRoutes(mux)
-	logger.Info("API Gateway starting on port :8080")
-	if err := http.ListenAndServe(":8080", mux); err != nil {
+	logger.Info("API Gateway starting on port :8080", slog.String("port", port))
+	if err := http.ListenAndServe(port, mux); err != nil {
 		log.Fatal(err)
 	}
 }

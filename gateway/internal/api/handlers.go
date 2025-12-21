@@ -3,19 +3,22 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/lyagu5h/finScope/gateway/internal/middleware"
-	"github.com/lyagu5h/finScope/ledger/pkg/ledger"
+	app "github.com/lyagu5h/finScope/ledger/pkg/ledger"
 )
 
 type Handler struct {
-	Store *ledger.Store
+	App app.Svc
+	Logger *slog.Logger
 }
 
-func NewHandler(store *ledger.Store) *Handler {
+func NewHandler(app app.Svc, logger *slog.Logger) *Handler {
 	return &Handler{
-		Store: store,
+		App: app,
+		Logger: logger,
 	}
 }
 
@@ -62,8 +65,8 @@ func (h *Handler) createTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.Store.AddTransaction(tx); err != nil {
-		if errors.Is(err, ledger.ErrBudgetExceeded) {
+	if _, err := h.App.AddTransaction(tx); err != nil {
+		if errors.Is(err, app.ErrBudgetExceeded) {
 			writeError(w, http.StatusConflict, "budget exceeded")
 			return
 		}
@@ -75,7 +78,7 @@ func (h *Handler) createTransaction(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) listTransactions(w http.ResponseWriter, _ *http.Request) {
-	txs, err := h.Store.ListTransactions()
+	txs, err := h.App.ListTransactions()
 
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
@@ -93,7 +96,6 @@ func (h *Handler) listTransactions(w http.ResponseWriter, _ *http.Request) {
 func (h *Handler) setBudget(w http.ResponseWriter, r *http.Request) {
 	var req CreateBudgetRequest
 
-	ctx := r.Context()
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -107,8 +109,8 @@ func (h *Handler) setBudget(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.Store.SetBudget(ctx, b); err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
+	if err := h.App.SetBudget(b); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -116,8 +118,7 @@ func (h *Handler) setBudget(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) listBudgets(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	budgets, err := h.Store.ListBudgets(ctx)
+	budgets, err := h.App.ListBudgets()
 
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal error")
