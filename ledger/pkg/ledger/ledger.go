@@ -10,7 +10,7 @@ import (
 )
 
 type (
-	Svc = service.LedgerService
+	LedgerService = service.LedgerService
 	Budget = domain.Budget
 	Transaction = domain.Transaction
 	Validatable = domain.Validatable
@@ -22,7 +22,7 @@ func CheckValid(v Validatable) error {
 	return domain.CheckValid(v)
 }
 
-func NewLedgerService(ctx context.Context, logger *slog.Logger) (Svc, app.CloseFn,error) {
+func NewLedgerService(ctx context.Context, logger *slog.Logger) (LedgerService, app.CloseFn,error) {
 	return app.NewLedgerService(ctx, logger)
 }
 

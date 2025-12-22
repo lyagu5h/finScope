@@ -1,15 +1,20 @@
 package middleware
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 )
 
-func Logging(next http.Handler) http.Handler {
+func Logging(next http.Handler, logger *slog.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		next.ServeHTTP(w, r)
-		log.Printf("%s %s %v", r.Method, r.URL.Path, time.Since(start))
+		logger.Info(
+			"http request",
+			slog.String("method", r.Method),
+			slog.String("path", r.URL.Path),
+			slog.Duration("duration", time.Since(start)),
+		)
 	})
 }
