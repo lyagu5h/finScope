@@ -11,8 +11,14 @@ import (
 	"github.com/lyagu5h/finScope/gateway/internal/delivery/client"
 )
 
+// @title FinScope API
+// @version 1.0
+// @description HTTP API Gateway for FinScope Ledger
+// @host localhost:8080
+// @BasePath /
+
 func main() {
-handlerLog := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+	handlerLog := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	})
 	logger := slog.New(handlerLog)

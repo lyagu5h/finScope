@@ -1,0 +1,243 @@
+basePath: /
+definitions:
+  api.BudgetResponse:
+    properties:
+      category:
+        type: string
+      limit:
+        type: number
+    type: object
+  api.BulkCreateTransactionsRequest:
+    properties:
+      transactions:
+        items:
+          $ref: '#/definitions/api.CreateTransactionRequest'
+        type: array
+      workers:
+        type: integer
+    type: object
+  api.BulkCreateTransactionsResponse:
+    properties:
+      accepted:
+        type: integer
+      errors:
+        items:
+          $ref: '#/definitions/api.BulkImportErrorResponse'
+        type: array
+      rejected:
+        type: integer
+    type: object
+  api.BulkImportErrorResponse:
+    properties:
+      error:
+        type: string
+      index:
+        type: integer
+    type: object
+  api.CreateBudgetRequest:
+    properties:
+      category:
+        type: string
+      limit:
+        type: number
+    type: object
+  api.CreateTransactionRequest:
+    properties:
+      amount:
+        type: number
+      category:
+        type: string
+      date:
+        type: string
+      description:
+        type: string
+    type: object
+  api.ErrorResponse:
+    properties:
+      error:
+        type: string
+    type: object
+  api.TransactionResponse:
+    properties:
+      amount:
+        type: number
+      category:
+        type: string
+      date:
+        type: string
+      description:
+        type: string
+      id:
+        type: integer
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: HTTP API Gateway for FinScope Ledger
+  title: FinScope API
+  version: "1.0"
+paths:
+  /api/budgets:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/api.BudgetResponse'
+            type: array
+      summary: List budgets
+      tags:
+      - budgets
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Budget payload
+        in: body
+        name: budget
+        required: true
+        schema:
+          $ref: '#/definitions/api.CreateBudgetRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/api.BudgetResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Set budget
+      tags:
+      - budgets
+  /api/reports/summary:
+    get:
+      parameters:
+      - description: From date (YYYY-MM-DD)
+        in: query
+        name: from
+        required: true
+        type: string
+      - description: To date (YYYY-MM-DD)
+        in: query
+        name: to
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              format: float64
+              type: number
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Get report summary
+      tags:
+      - reports
+  /api/transactions:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/api.TransactionResponse'
+            type: array
+      summary: List transactions
+      tags:
+      - transactions
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Transaction payload
+        in: body
+        name: transaction
+        required: true
+        schema:
+          $ref: '#/definitions/api.CreateTransactionRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/api.TransactionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Create transaction
+      tags:
+      - transactions
+  /api/transactions/bulk:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Bulk transactions
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.BulkCreateTransactionsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.BulkCreateTransactionsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Bulk create transactions
+      tags:
+      - transactions
+  /api/transactions/export.csv:
+    get:
+      produces:
+      - text/csv
+      responses:
+        "200":
+          description: CSV file
+          schema:
+            type: string
+      summary: Export transactions to CSV
+      tags:
+      - transactions
+  /ping:
+    get:
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: pong
+          schema:
+            type: string
+      summary: Health check
+      tags:
+      - system
+swagger: "2.0"

@@ -1,15 +1,15 @@
-# !!! WORK IN PROGRESS !!! WORK IN PROGRESS !!! WORK IN PROGRESS !!! WORK IN PROGRESS !!! WORK IN PROGRESS !!! WORK IN PROGRESS !!!
-
 ## Запуск
 
-1. Применить миграции:
-   goose -dir ./ledger/migrations postgres "postgres://postgres:postgres@localhost:5432/cashapp?sslmode=disable" up
+1. MIGRATIONS
+make migration-up
+make migration-down
 
-2. Запустить приложение:
-   go run ./ledger/cmd/ledger
+2. DOCKER UP
+make compose-up
+make compose-down
 
-Для отката последней миграции:
-goose -dir ./ledger/migrations postgres "postgres://postgres:postgres@localhost:5432/cashapp?sslmode=disable" down
+3. GEN PROTO
+make proto
 
-
-# !!! WORK IN PROGRESS !!! WORK IN PROGRESS !!! WORK IN PROGRESS !!! WORK IN PROGRESS !!! WORK IN PROGRESS !!! WORK IN PROGRESS !!!
+swaggerUI:
+http://localhost:8080/swagger/index.html
