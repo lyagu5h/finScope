@@ -1,3 +1,4 @@
+.gitignore
 .env.example
 *.iml
 *.ipynb
@@ -36,4 +37,3 @@ pkg
 # Build ignore files
 build
 release
-ledger/go.sum
