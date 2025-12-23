@@ -14,7 +14,6 @@ import (
 )
 
 var ErrBudgetExceeded = errors.New("budget exceeded")
-
 type BulkImportResult struct {
 	Accepted int `json:"accepted"`
 	Rejected int `json:"rejected"`
@@ -77,7 +76,7 @@ func (svc *ledger) AddTransaction(ctx context.Context, t domain.Transaction) (do
 	)
 
 	if t.Date.IsZero() {
-		t.Date = time.Now().UTC()
+		t.Date = time.Now()
 	}
 	if err := t.Validate(); err != nil {
 		return t, err

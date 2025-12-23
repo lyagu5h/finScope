@@ -19,4 +19,6 @@ RUN apk add --no-cache ca-certificates
 
 COPY --from=builder /app/ledger .
 
+EXPOSE 50051
+
 CMD ["./ledger"]

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"log"
 	"log/slog"
 	"net/http"
@@ -9,28 +8,47 @@ import (
 	"time"
 
 	"github.com/lyagu5h/finScope/gateway/internal/api"
-	"github.com/lyagu5h/finScope/ledger/pkg/ledger"
+	"github.com/lyagu5h/finScope/gateway/internal/delivery/client"
 )
 
 func main() {
-	mux := http.NewServeMux()
-	handlerLog := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
+handlerLog := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	})
 	logger := slog.New(handlerLog)
-	ledgerSvc, closeFn, err := ledger.NewLedgerService(context.Background(), logger)
-	var timeout = 2 * time.Second
 
-	if err != nil {
-		logger.Error("failed to fabric ledger service", slog.String("error", err.Error()))
+	ledgerAddr := os.Getenv("LEDGER_ADDR")
+	if ledgerAddr == "" {
+		ledgerAddr = "localhost:50051"
 	}
-	defer closeFn()
-	
-	handler := api.NewHandler(ledgerSvc, logger, timeout)
 
-	port := ":8080"
+	httpAddr := os.Getenv("HTTP_ADDR")
+	if httpAddr == "" {
+		httpAddr = ":8080"
+	}
 
-	handler.RegisterRoutes(mux, logger)
-	logger.Info("API Gateway starting on port :8080", slog.String("port", port))
-	if err := http.ListenAndServe(port, mux); err != nil {
+	timeout := 2 * time.Second
+
+	ledgerClient, err := client.New(ledgerAddr)
+	if err != nil {
+		logger.Error("failed to create grpc client", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+
+	handler := api.NewHandler(ledgerClient, logger, timeout)
+
+	mux := http.NewServeMux()
+	handler.RegisterRoutes(mux)
+
+	server := &http.Server{
+		Addr:         httpAddr,
+		Handler:      mux,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 5 * time.Second,
+	}
+
+	logger.Info("API Gateway starting", slog.String("addr", httpAddr))
+	if err := server.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
 }

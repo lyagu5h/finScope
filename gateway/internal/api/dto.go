@@ -12,7 +12,7 @@ type CreateTransactionRequest struct {
 }
 
 type TransactionResponse struct {
-	ID          int `json:"id"`
+	ID          int64 `json:"id"`
 	Amount      float64 `json:"amount"`
 	Category    string `json:"category"`
 	Description string `json:"description"`
@@ -27,7 +27,22 @@ type CreateBudgetRequest struct {
 type BudgetResponse struct {
 	Category string `json:"category"`
 	Limit float64 `json:"limit"`
-	Period string `json:"period,omitempty"`
+}
+
+type BulkCreateTransactionsRequest struct {
+	Transactions []CreateTransactionRequest `json:"transactions"`
+	Workers      int                         `json:"workers,omitempty"`
+}
+
+type BulkImportErrorResponse struct {
+	Index int    `json:"index"`
+	Error string `json:"error"`
+}
+
+type BulkCreateTransactionsResponse struct {
+	Accepted int                      `json:"accepted"`
+	Rejected int                      `json:"rejected"`
+	Errors   []BulkImportErrorResponse `json:"errors"`
 }
 
 

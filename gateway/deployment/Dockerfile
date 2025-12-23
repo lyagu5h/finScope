@@ -1,23 +1,29 @@
+# ---------- builder ----------
 FROM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
-COPY go.mod ./
+RUN apk add --no-cache ca-certificates
+
+COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-    go build -ldflags="-s -w" -o gateway ./cmd/gateway
-    
+    go build -ldflags="-s -w" \
+    -o gateway \
+    ./cmd/gateway
+
+# ---------- runner ----------
 FROM alpine:latest
 
 WORKDIR /app
 
 RUN apk add --no-cache ca-certificates
 
-COPY --from=builder /app/gateway /app/gateway
+COPY --from=builder /app/gateway .
 
 EXPOSE 8080
 
-CMD ["/app/gateway"]
+ENTRYPOINT ["./gateway"]

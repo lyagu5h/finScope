@@ -1,45 +1,45 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
-	"log"
 	"log/slog"
 	"net/http"
 	"time"
 
+	"google.golang.org/protobuf/types/known/emptypb"
+
+	"github.com/lyagu5h/finScope/gateway/internal/delivery/client"
+	ledgerv1 "github.com/lyagu5h/finScope/gateway/internal/delivery/protos/ledger/v1"
 	"github.com/lyagu5h/finScope/gateway/internal/middleware"
-	app "github.com/lyagu5h/finScope/ledger/pkg/ledger"
 )
 type Handler struct {
-	App app.LedgerService
-	Logger *slog.Logger
-	Timeout time.Duration
+	ledger *client.Client
+	logger *slog.Logger
+	timeout time.Duration
 }
 
-func NewHandler(app app.LedgerService, logger *slog.Logger, timeout time.Duration) *Handler {
+func NewHandler(ledger *client.Client, logger *slog.Logger, timeout time.Duration) *Handler {
 	return &Handler{
-		App: app,
-		Logger: logger,
-		Timeout: timeout,
+		ledger: ledger,
+		timeout: timeout,
+		logger: logger,
 	}
 }
 
-func (h *Handler) RegisterRoutes(mux *http.ServeMux, logger *slog.Logger) {
+func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("/api/transactions", middleware.Timeout(
-			middleware.Logging(http.HandlerFunc(h.transactionsHandler), logger), 
-			h.Timeout,
+			middleware.Logging(http.HandlerFunc(h.transactionsHandler), h.logger), 
+			h.timeout,
 		),
 	)
 	mux.Handle("/api/budgets", middleware.Timeout(
-			middleware.Logging(http.HandlerFunc(h.budgetsHandler), logger), 
-			h.Timeout,
+			middleware.Logging(http.HandlerFunc(h.budgetsHandler), h.logger), 
+			h.timeout,
 		),
 	)
 	mux.Handle("/api/reports/summary", middleware.Timeout(
-			middleware.Logging(http.HandlerFunc(h.reportsSummaryHandler), logger), 
-			h.Timeout,
+			middleware.Logging(http.HandlerFunc(h.reportsSummaryHandler), h.logger), 
+			h.timeout,
 		),
 	)
 	mux.Handle(
@@ -47,13 +47,19 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, logger *slog.Logger) {
 		middleware.Timeout(
 			middleware.Logging(
 				http.HandlerFunc(h.bulkTransactions),
-				logger,
+				h.logger,
 			),
-			h.Timeout,
+			h.timeout,
 		),
 	)
+	mux.HandleFunc("/ping", h.ping)
 
 
+}
+
+func (h *Handler) ping(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("pong"))
 }
 
 func (h *Handler) transactionsHandler(w http.ResponseWriter, r *http.Request) {
@@ -79,181 +85,132 @@ func (h *Handler) budgetsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) reportsSummaryHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+		if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 
-	fromStr := r.URL.Query().Get("from")
-	toStr := r.URL.Query().Get("to")
-
-	if fromStr == "" || toStr == "" {
-		writeError(w, http.StatusBadRequest, "from and to parameters are required")
+	from := r.URL.Query().Get("from")
+	to := r.URL.Query().Get("to")
+	if from == "" || to == "" {
+		writeError(w, http.StatusBadRequest, "from and to are required")
 		return
 	}
 
-	from, err := time.Parse("2006-01-02", fromStr)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid from date format")
-		return
-	}
-
-	to, err := time.Parse("2006-01-02", toStr)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid to date format")
-		return
-	}
-
-	if to.Before(from) {
-		writeError(w, http.StatusBadRequest, "`to` must be after or equal to `from`")
-		return
-	}
-	
-	h.Logger.Info(
-		"report summary request",
-		slog.String("from", fromStr),
-		slog.String("to", toStr),
+	res, err := h.ledger.Ledger().GetReportSummary(
+		r.Context(),
+		&ledgerv1.ReportSummaryRequest{
+			From: from,
+			To:   to,
+		},
 	)
-
-	summary, err := h.App.GetReportSummary(r.Context(), from, to)
 	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			writeError(w, http.StatusGatewayTimeout, "request timeout")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "internal error")
+		writeGRPCError(w, err)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, summary)
+	writeJSON(w, http.StatusOK, res.Totals)
 }
 
 func (h *Handler) createTransaction(w http.ResponseWriter, r *http.Request) {
 	var req CreateTransactionRequest
-
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	tx := toTransactionLedger(req)
-
-	if err := tx.Validate(); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	createdTx, err := h.App.AddTransaction(r.Context(), tx); 
+	res, err := h.ledger.Ledger().AddTransaction(
+		r.Context(),
+		toProtoCreateTransaction(req),
+	)
 	if err != nil {
-		if errors.Is(err, app.ErrBudgetExceeded) {
-			writeError(w, http.StatusConflict, "budget exceeded")
-			return
-		}
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			writeError(w, http.StatusGatewayTimeout, "request timeout")
-			return
-		}
-		log.Println(err)
-		writeError(w, http.StatusInternalServerError, "internal error")
+		writeGRPCError(w, err)
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, toTransactionDTO(createdTx))
+	writeJSON(w, http.StatusCreated, toTransactionDTOFromProto(res))
 }
 
 func (h *Handler) listTransactions(w http.ResponseWriter, r *http.Request) {
-	txs, err := h.App.ListTransactions(r.Context())
-
+	res, err := h.ledger.Ledger().ListTransactions(
+		r.Context(),
+		&emptypb.Empty{},
+	)
 	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			writeError(w, http.StatusGatewayTimeout, "request timeout")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "internal error")
+		writeGRPCError(w, err)
 		return
 	}
 
-	res := make([]TransactionResponse, 0, len(txs))
-	for _, tx := range txs {
-		res = append(res, toTransactionDTO(tx))
+	out := make([]TransactionResponse, 0, len(res.Transactions))
+	for _, tx := range res.Transactions {
+		out = append(out, toTransactionDTOFromProto(tx))
 	}
 
-	writeJSON(w, http.StatusOK, res)
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (h *Handler) setBudget(w http.ResponseWriter, r *http.Request) {
 	var req CreateBudgetRequest
-
-
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	b := toBudgetLedger(req)
-
-	if err := b.Validate(); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+	res, err := h.ledger.Ledger().SetBudget(
+		r.Context(),
+		toProtoCreateBudget(req),
+	)
+	if err != nil {
+		writeGRPCError(w, err)
 		return
 	}
 
-	if err := h.App.SetBudget(r.Context(), b); err != nil {
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			writeError(w, http.StatusGatewayTimeout, "request timeout")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	writeJSON(w, http.StatusCreated, toBudgetDTO(b))
+	writeJSON(w, http.StatusCreated, toBudgetDTOFromProto(res))
 }
 
 func (h *Handler) listBudgets(w http.ResponseWriter, r *http.Request) {
-	budgets, err := h.App.ListBudgets(r.Context())
-
+	res, err := h.ledger.Ledger().ListBudgets(
+		r.Context(),
+		&emptypb.Empty{},
+	)
 	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			writeError(w, http.StatusGatewayTimeout, "request timeout")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "internal error")
+		writeGRPCError(w, err)
 		return
 	}
 
-	res := make([]BudgetResponse, 0, len(budgets))
-
-	for _, b := range budgets {
-		res = append(res, toBudgetDTO(b))
+	out := make([]BudgetResponse, 0, len(res.Budgets))
+	for _, b := range res.Budgets {
+		out = append(out, toBudgetDTOFromProto(b))
 	}
 
-	writeJSON(w, http.StatusOK, res)
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (h *Handler) bulkTransactions(w http.ResponseWriter, r *http.Request) {
-	var req []CreateTransactionRequest
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
 
+	var req BulkCreateTransactionsRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	workers := parseWorkers(r, 4)
-
-	txs := make([]app.Transaction, 0, len(req))
-	for _, item := range req {
-		txs = append(txs, toTransactionLedger(item))
-	}
-
-	result, err := h.App.ImportTransactions(r.Context(), txs, workers)
-	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			writeError(w, http.StatusGatewayTimeout, "request timeout")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "internal error")
+	if len(req.Transactions) == 0 {
+		writeError(w, http.StatusBadRequest, "transactions list is empty")
 		return
 	}
 
-	writeJSON(w, http.StatusOK, result)
+	res, err := h.ledger.Ledger().BulkAddTransactions(
+		r.Context(),
+		toProtoBulkCreateTransactions(req),
+	)
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, toBulkResponseDTO(res))
 }
